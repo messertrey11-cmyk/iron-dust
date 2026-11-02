@@ -3,6 +3,8 @@ import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
 import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
+import Peer from 'peerjs';
+import {createHostCore} from './hostcore.js';
 import {clamp,smooth,rng,LZ,trackX,trackDX,hgt,trackDist,TEX,M,B,C,G,mesh,signTex,makeLoco,makeTender,makeFlatcar,GEO,shrubMat,makeBuilding,makeWaterTower,makeWindmill,makeZombie,makeHuman} from './models.js';
 const $=id=>document.getElementById(id);
 const GOAL=80000,CH=250,V3=THREE.Vector3;
@@ -312,11 +314,27 @@ function msg(t,c='#fff'){const d=document.createElement('div');d.innerHTML=t;d.s
 // ================= networking =================
 let net=null,lastPs={},trainSrv=null,padSrv={n:0,t:15,ids:[]};const remotes=new Map();
 function send(m){if(net&&net.ws.readyState===1)net.ws.send(JSON.stringify(m))}
-const online=()=>location.protocol==='http:'||location.protocol==='https:';
-function connect(){return new Promise((res,rej)=>{let ws;try{ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host)}catch(e){return rej('no server')}
- const to=setTimeout(()=>{rej('timeout');try{ws.close()}catch(e){}},5000);ws.onerror=()=>rej('no server');
- ws.onopen=()=>{clearTimeout(to);net={ws,id:0,host:0,room:'',players:[]};res()};ws.onmessage=e=>onNet(JSON.parse(e.data));
- ws.onclose=()=>{if(net&&net.ws===ws){net=null;clearRemotes();if(mode!=='menu')msg('Disconnected from server — continuing offline','#f66')}}})}
+const online=()=>true;
+// ---- P2P transport (PeerJS public broker). Host browser runs hostcore (authoritative); clients connect by room code.
+const PFX='irondust-v1-';let peer=null,core=null;
+function mkCode(){return Math.random().toString(36).slice(2,7).toUpperCase().replace(/[^A-Z0-9]/g,'X')}
+function shim(sendFn){const w={readyState:1,send:sendFn,close(){}};return w}
+function connect(asHost,code){return new Promise((res,rej)=>{
+ const to=setTimeout(()=>{rej(asHost?'Could not reach the matchmaking service (check your internet)':'Could not find party '+code+' — check the code and that the host is still in game');try{peer&&peer.destroy()}catch(e){}},15000);
+ try{peer=new Peer(asHost?PFX+code:undefined,{debug:0})}catch(e){clearTimeout(to);return rej('Multiplayer not supported in this browser')}
+ peer.on('error',e=>{if(e.type==='unavailable-id'){clearTimeout(to);rej('That party code is taken, try again');return}if(e.type==='peer-unavailable'){clearTimeout(to);rej('Party '+code+' not found — is the host online?');return}if(!net){clearTimeout(to);rej('Network error: '+e.type)}});
+ peer.on('disconnected',()=>{try{peer.reconnect()}catch(e){}});
+ if(asHost){peer.on('open',()=>{clearTimeout(to);core=createHostCore();let local;
+   const ws=shim(m=>local.recv(m));net={ws,id:0,host:0,room:'',players:[],code,isHost:true};
+   local=core.addClient({open:true,send:m=>onNet(JSON.parse(m))});
+   peer.on('connection',conn=>{let cl=null;conn.on('open',()=>{cl=core.addClient({get open(){return conn.open},send:m=>conn.send(m)})});conn.on('data',d=>cl&&cl.recv(d));conn.on('close',()=>{cl&&cl.close();cl=null});conn.on('error',()=>{cl&&cl.close();cl=null})});
+   res()})}
+ else peer.on('open',()=>{const conn=peer.connect(PFX+code,{reliable:true});
+   conn.on('open',()=>{clearTimeout(to);const ws=shim(m=>conn.send(m));net={ws,id:0,host:0,room:'',players:[],code,isHost:false};res()});
+   conn.on('data',d=>onNet(typeof d==='string'?JSON.parse(d):d));
+   conn.on('close',()=>{if(net&&net.ws){net=null;clearRemotes();if(mode!=='menu'){msg('Lost connection to the host — back to offline lobby','#f66');enterLobby()}}})});
+})}
+function disconnect(){try{peer&&peer.destroy()}catch(e){}peer=null;if(core){core.stop();core=null}net=null}
 function joinRoom(room){clearRemotes();send({t:'join',room,name:pname(),cls:save.cls})}
 const pname=()=>($('nm').value.trim()||'Drifter').slice(0,16);
 function clearRemotes(){for(const r of remotes.values())scene.remove(r.g);remotes.clear();for(const z of remoteZ.values())scene.remove(z.g);remoteZ.clear();lastPs={}}
@@ -349,7 +367,7 @@ function enterLobby(){mode='lobby';clearWorld();for(const z of zombies.values())
  lobby.g.visible=true;trainG.visible=false;Object.assign(player,{hp:stat.maxHp(),dead:false,driving:false,vy:0,yaw:-Math.PI/2,pitch:0});player.pos.set(-12+Math.random()*2,0,LZ+(Math.random()-.5)*3);
  padLocal={on:false,t:15};setWeapon(1);show(null);updateTerrain(true);lockPointer();
  msg('Welcome to Sweetwater Junction. Pick a trade at the Outfitter, spend your bank at the Trading Post, then step on the glowing pad by the train.','#fd6');
- if(!net)msg(online()?'Server unreachable — offline lobby (solo).':'Offline lobby (solo). For co-op, run start-game and open http://localhost:8080','#aaa')}
+ if(!net)msg('Offline lobby (solo). For co-op: main menu → Host Co-op Party.','#aaa')}
 function startRun(){mode='run';clearWorld();for(const z of zombies.values())scene.remove(z.g);zombies.clear();lobby.g.visible=false;trainG.visible=true;
  if(!net){seed=(Math.random()*1e9)|0;opened=new Set();Object.assign(train,{dist:0,speed:0,throttle:0,fuel:60})}trainSrv=null;lastTown='';
  const k=K();Object.assign(player,{hp:stat.maxHp(),coal:k.coal||3,bandage:k.bandage||1,ammo:k.ammo||24,dead:false,driving:false,vy:0,yaw:0,pitch:0,kills:0});
@@ -358,14 +376,18 @@ function startRun(){mode='run';clearWorld();for(const z of zombies.values())scen
  if(net&&net.host===net.id)send({t:'trainup',maxSpeed:stat.maxSpeed(),eff:stat.eff()});
  msg('Walk forward to the engine cab and press E to drive. W/S = throttle, Q = shovel coal.','#fd6');banner('Sweetwater Depot')}
 function toLobby(){if(net){joinRoom('LOBBY')}else enterLobby()}
-$('play').onclick=async()=>{localStorage.setItem('ironDustName',$('nm').value);$('mperr').textContent='';
- if(online()&&!net){$('mperr').textContent='Connecting...';try{await connect();$('mperr').textContent='';joinRoom('LOBBY');return}catch(e){$('mperr').textContent='';net=null}}
- if(net)joinRoom('LOBBY');else enterLobby()};
+async function goOnline(asHost){localStorage.setItem('ironDustName',$('nm').value);const code=asHost?mkCode():$('rc').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+ if(!asHost&&!code){$('mperr').textContent='Enter the party code your friend gave you';return}
+ disconnect();$('mperr').textContent=asHost?'Opening party...':'Joining party '+code+'...';
+ try{await connect(asHost,code);$('mperr').textContent='';joinRoom('LOBBY');if(asHost)setTimeout(()=>msg(`Party code <b>${code}</b> — friends join with it, or share: ${inviteLink()}`,'#fd6'),800)}catch(e){disconnect();$('mperr').textContent=String(e)}}
+const inviteLink=()=>location.protocol.startsWith('http')?location.origin+location.pathname+'?room='+(net?net.code:''):'(code only)';
+$('play').onclick=()=>{localStorage.setItem('ironDustName',$('nm').value);disconnect();enterLobby()};
+$('host').onclick=()=>goOnline(true);$('join').onclick=()=>goOnline(false);
 $('resume').onclick=()=>{show(null);lockPointer()};$('openshop').onclick=()=>{if(mode==='run'&&train.speed>1)return msg('Stop the train first');openShop()};
 $('tolobby').onclick=()=>{if(mode==='run'){if(net&&net.players.length>1){toLobby();return}endRun(false);return}show(null)};
-$('quit').onclick=()=>{if(net){try{net.ws.close()}catch(e){}net=null}clearRemotes();clearWorld();mode='menu';show('menu');saveInfo()};
+$('quit').onclick=()=>{disconnect();clearRemotes();clearWorld();mode='menu';show('menu');saveInfo()};
 function saveInfo(){$('saveinfo').innerHTML=`<br>Bank $${save.money} · Best ${(save.best/1000).toFixed(2)} km · Trade: ${K().n}`}saveInfo();
-$('nm').value=localStorage.getItem('ironDustName')||'';
+$('nm').value=localStorage.getItem('ironDustName')||'';{const q=new URLSearchParams(location.search).get('room');if(q)$('rc').value=q.toUpperCase()}
 // ================= main loop =================
 let last=performance.now(),dayT=.3,netT=0,thrT=0,smokeT=0,fps=60,frames=0,fpsT=0;
 const cDay=new THREE.Color(0xd8c4a0),cNight=new THREE.Color(0x0a0f22),cDusk=new THREE.Color(0xd07a48),fogC=new THREE.Color();
@@ -413,7 +435,7 @@ function hud(night){const w=W[wi],mh=stat.maxHp();$('hpt').textContent=`${Math.m
  $('fut').textContent=`${train.fuel.toFixed(0)}%`;$('fub').style.width=train.fuel+'%';
  $('weap').innerHTML=`<b style="font-size:19px">${w.n}</b> ${w.clip?`${w.mag}/${w.clip} · reserve ${player.ammo}`:''}${reloadT>0?' (reloading)':''}`;
  $('inv').innerHTML=`Coal ${player.coal} · Bandages ${player.bandage} · Luck ${stat.luck()} · ${K().n}`;const hr=Math.floor((dayT*24+6)%24);
- const room=net?`<br><small>${net.room==='LOBBY'?'Online lobby':'Co-op run'} · ${net.players.length} player(s)${mode==='run'&&net.host===net.id?' · host':''}</small>`:'';
+ const room=net?`<br><small>Party ${net.code}${net.isHost?' (you host)':''} · ${net.room==='LOBBY'?'lobby':'co-op run'} · ${net.players.length} player(s)${mode==='run'&&net.host===net.id?' · host':''}</small>`:'';
  if(mode==='run')$('top').innerHTML=`<b>${(train.dist/1000).toFixed(2)}</b> / 80 km · ${(train.speed*3.6).toFixed(0)} km/h · throttle ${(train.throttle*100|0)}% · $${save.money} · ${String(hr).padStart(2,'0')}:00 ${night?'☾':'☀'}${room}`;
  else $('top').innerHTML=`<b>SWEETWATER JUNCTION</b> · Bank $${save.money} · Trade: ${K().n}${room}`;
  let pr='';if(mode==='lobby'){const n=nearNpc();if(n)pr=n.kind==='classes'?'E: choose your trade':'E: trade (permanent upgrades)';
