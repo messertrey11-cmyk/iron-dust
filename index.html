@@ -1,0 +1,47 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="data:,"><title>Iron Dust — Frontier Rail Run</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{margin:0;overflow:hidden;background:#000;font-family:Georgia,'Times New Roman',serif;color:#f3e2c0;user-select:none}
+canvas{display:block}
+#hud{position:fixed;left:14px;bottom:14px;font-size:15px;text-shadow:0 1px 3px #000;pointer-events:none;display:none}
+.bar{width:230px;height:12px;background:#0009;border:1px solid #c9a46a;margin:3px 0 6px;border-radius:2px;overflow:hidden}.bar>div{height:100%;transition:width .2s}
+#top{position:fixed;top:10px;left:50%;transform:translateX(-50%);font-size:19px;text-shadow:0 1px 4px #000;pointer-events:none;text-align:center;display:none}
+#xh{position:fixed;left:50%;top:50%;width:18px;height:18px;margin:-9px;pointer-events:none;display:none}
+#xh:before,#xh:after{content:'';position:absolute;background:#fffc;left:8px;top:0;width:2px;height:18px}#xh:after{transform:rotate(90deg)}
+#prompt{position:fixed;left:50%;top:60%;transform:translateX(-50%);font-size:18px;text-shadow:0 1px 4px #000;pointer-events:none;text-align:center}
+#msgs{position:fixed;right:14px;top:70px;text-align:right;font-size:16px;pointer-events:none;text-shadow:0 1px 3px #000}
+#chat{position:fixed;left:14px;top:14px;width:360px;font-size:14px;text-shadow:0 1px 3px #000;pointer-events:none}
+#chatin{display:none;width:340px;background:#000a;color:#fff;border:1px solid #c9a46a;pointer-events:auto;font:inherit;padding:4px}
+#vign{position:fixed;inset:0;pointer-events:none;box-shadow:inset 0 0 160px #000a}
+#hurt{position:fixed;inset:0;pointer-events:none;box-shadow:inset 0 0 180px #c00;opacity:0;transition:opacity .25s}
+.scr{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(#2a170bcc,#0d0704f0);z-index:5;text-align:center}
+.scr h1{font-size:60px;margin:6px;color:#e9b04f;letter-spacing:4px;text-shadow:0 3px 0 #5a2e10,0 0 30px #e9b04f55}
+.scr h2{color:#e9b04f;margin:6px}
+button{font:inherit;font-size:18px;margin:5px;padding:9px 20px;background:linear-gradient(#7b4422,#552c14);color:#f3e2c0;border:2px solid #e9b04f;cursor:pointer;border-radius:5px}
+button:hover:not(:disabled){filter:brightness(1.25)}button:disabled{opacity:.45;cursor:default}
+input{font:inherit;font-size:17px;padding:7px;margin:4px;background:#2a1a10;color:#fff;border:1px solid #c9a46a;border-radius:4px}
+.row{display:flex;gap:14px;align-items:center;justify-content:space-between;width:520px;margin:4px;padding:6px 10px;background:#0005;border:1px solid #6b4a2a;border-radius:6px}
+.cards{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;max-width:980px}
+.card{width:290px;padding:12px;background:#0006;border:2px solid #6b4a2a;border-radius:8px;text-align:left}.card.sel{border-color:#e9b04f;box-shadow:0 0 18px #e9b04f66}
+.card b{color:#e9b04f;font-size:20px}small{opacity:.78}
+</style></head><body>
+<div id="vign"></div><div id="hurt"></div>
+<div id="top"></div><div id="xh"></div><div id="prompt"></div><div id="msgs"></div>
+<div id="chat"><div id="chatlog"></div><input id="chatin" maxlength="140" placeholder="Say something... (Enter)"></div>
+<div id="hud"><div id="weap"></div>
+ <div>Health <span id="hpt"></span></div><div class="bar"><div id="hpb" style="background:linear-gradient(#e44,#922)"></div></div>
+ <div id="fuelwrap">Boiler <span id="fut"></span><div class="bar"><div id="fub" style="background:linear-gradient(#fb4,#c60)"></div></div></div>
+ <div id="inv"></div></div>
+<div class="scr" id="menu" style="display:flex"><h1>IRON DUST</h1><div style="font-size:19px">Ride the last train 80 km across the dead frontier.</div><br>
+ <input id="nm" placeholder="Your name" maxlength="16">
+ <div><button id="play" style="font-size:24px">Enter the Frontier</button></div>
+ <div><button id="qbtn">Graphics: High</button></div>
+ <div id="mperr" style="color:#f99;max-width:560px"></div><br>
+ <small>WASD move · Mouse look (click to capture, or hold right-click) · Space jump · Shift sprint · E interact/drive/open<br>
+ 1-3 weapons · Click attack · R reload · H bandage · Q shovel coal (in cab) · B trader (train stopped) · T chat · Esc pause</small>
+ <div id="saveinfo"></div><br><small style="opacity:.5">All models, textures and sounds are generated procedurally in code. Built with three.js (MIT).</small></div>
+<div class="scr" id="pause"><h1>PAUSED</h1><button id="resume">Resume</button><button id="openshop">Trader</button><button id="qbtn2">Graphics</button><button id="tolobby">Return to Lobby</button><button id="quit">Main menu</button></div>
+<div class="scr" id="shop"><h1>TRADING POST</h1><div id="shopmoney"></div><div id="shoprows"></div><button id="shopclose">Close</button></div>
+<div class="scr" id="classes"><h1>CHOOSE YOUR TRADE</h1><div id="clsmoney"></div><div class="cards" id="clscards"></div><button id="clsclose">Close</button></div>
+<div class="scr" id="results"><h1 id="restitle">YOU DIED</h1><div id="resinfo" style="font-size:19px;line-height:1.6"></div><br><button id="resback">Return to Lobby</button></div>
+<script src="js/game.js"></script></body></html>
