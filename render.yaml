@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: iron-dust
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
